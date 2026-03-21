@@ -1,12 +1,3 @@
-Certainly! To create a similar example using Markov chains instead of vector-based methods, we'll implement a Python script that:
-
-1. Defines a simple ontology for C++ code structures.
-2. Represents each C++ code structure as a Markov chain model.
-3. Compares the sequence of tokens in a C++ snippet to the Markov chain models to identify the most likely structure.
-
-### Python Code:
-
-```python
 import re
 import math
 from collections import defaultdict, Counter
@@ -83,23 +74,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
-
-### Explanation:
-
-1. **Ontology**: The ontology maps different C++ code structures to example sequences, which will be used to train Markov chains.
-
-2. **Tokenization**: The `tokenize` function breaks down the C++ code examples into sequences of tokens. This is crucial for building the Markov chains and comparing sequences.
-
-3. **Markov Chain Model**: The `build_markov_chain` function builds a normalized Markov chain for each structure in the ontology, where transition counts are converted to probabilities.
-
-4. **Likelihood Calculation**: The `calculate_likelihood` function computes the log-likelihood of a given sequence of tokens matching the Markov chain for each structure, incorporating a small penalty for unseen transitions.
-
-5. **Identification**: For each C++ snippet, the script calculates the likelihood of it matching each structure's Markov chain. The structure with the highest likelihood is considered the best match.
-
-### Output:
-The script will output which C++ structure each code snippet is identified as, based on the Markov chains.
-
-This approach, unlike vector-based methods, leverages the sequential nature of tokens, which can be especially effective in identifying patterns in structured text like code.
-
-Let me know if you need any further modifications!

@@ -82,10 +82,12 @@ class SVMWithLFSR:
         return ''.join(mutated_candidate)
     
     def crossover_candidates(self, parent1, parent2):
-        crossover_sequence = self.lfsr.generate_sequence(len(parent1))
+        # Use the shorter length to avoid IndexError
+        length = min(len(parent1), len(parent2))
+        crossover_sequence = self.lfsr.generate_sequence(length)
         child1 = list(parent1)
         child2 = list(parent2)
-        for i in range(len(crossover_sequence)):
+        for i in range(length):
             if crossover_sequence[i] % 2 == 1:  # Use LFSR to decide crossover points
                 child1[i], child2[i] = child2[i], child1[i]
         return ''.join(child1), ''.join(child2)
@@ -97,8 +99,9 @@ class SVMWithLFSR:
         population = prototypes * (population_size // len(prototypes) + 1)
         population = population[:population_size]
 
+        results = []
         for _ in range(generations):
-            with Pool(processes=cpu_count()) as pool:
+            with Pool(processes=min(cpu_count(), len(population))) as pool:
                 results = pool.map(lfsr_worker, population)
 
             # Select top 50% based on fitness
@@ -116,6 +119,9 @@ class SVMWithLFSR:
             population = selected_candidates + new_candidates
 
         # Return the best candidate based on fitness
+        if not results:
+             with Pool(processes=min(cpu_count(), len(population))) as pool:
+                results = pool.map(lfsr_worker, population)
         best_prototype, _ = sorted(results, key=lambda x: x[1], reverse=True)[0]
         return best_prototype
 
@@ -153,17 +159,14 @@ prototype_vectors = vectorizer.fit_transform(function_prototypes).toarray()
 polynomial_features = PolynomialFeatures(degree=3, interaction_only=False)
 high_dim_vectors = polynomial_features.fit_transform(prototype_vectors)
 
-# 4. Train/Test split
-X_train, X_test, y_train, y_test = train_test_split(high_dim_vectors, labels, test_size=0.3, random_state=42)
-
 # 5. Train SVM model
 svm_classifier = make_pipeline(StandardScaler(), SVC(kernel='linear', probability=True))
-svm_classifier.fit(X_train, y_train)
+svm_classifier.fit(high_dim_vectors, labels)
 
-# 6. Evaluate the model
-y_pred = svm_classifier.predict(X_test)
-print("Classification Report:")
-print(classification_report(y_test, y_pred))
+# 6. Evaluate the model on training data
+y_pred = svm_classifier.predict(high_dim_vectors)
+print("Classification Report (Training Data):")
+print(classification_report(labels, y_pred, zero_division=0))
 
 # 7. Initialize the LFSR
 lfsr = LFSR(seed=0b10111001, taps=[7, 5, 4, 3])  # Example taps
