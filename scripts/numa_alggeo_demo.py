@@ -1,18 +1,3 @@
-To leverage parallel processing on a Non-Uniform Memory Access (NUMA) system, we'll use Python's `multiprocessing` module, which allows you to parallelize tasks across multiple CPU cores. This can significantly speed up the processing of complex operations like the evolutionary strategy, feature extraction using algebraic geometry, and vectorization.
-
-### Steps to Improve the Code for NUMA Systems:
-
-1. **Parallelize the Evolutionary Strategy**: We can parallelize the fitness calculation for the evolutionary strategy, which can be computationally expensive, especially with a large population of candidate prototypes.
-
-2. **Parallelize Feature Extraction**: We can also parallelize the algebraic geometry feature extraction using Gröbner bases.
-
-3. **Optimize for NUMA Systems**: On a NUMA system, it's important to ensure that each process works on data that is local to its memory node, reducing the latency associated with accessing remote memory.
-
-Here’s the enhanced code:
-
-### Enhanced Python Code with Parallel Processing:
-
-```python
 import re
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -37,13 +22,13 @@ def fitness_with_lyapunov(candidate):
 
     # Evaluate the Lyapunov function at a fixed point (e.g., all ones)
     V_val = V_expr[0,0].subs({x[0]: 1, x[1]: 1, x[2]: 1})
-    
+
     if 'return' in candidate and any(kw in candidate for kw in ['int', 'double', 'float']):
         # Use the value of the Lyapunov function to influence the stability score
         stability_score = -float(V_val) / (len(candidate) + 1)
     else:
         stability_score = np.inf
-    
+
     return stability_score
 
 # 3. Worker for parallel evolutionary strategy (defined at top-level for pickling)
@@ -75,7 +60,7 @@ def evolutionary_strategy(prototypes, generations=10, population_size=50):
             child1 = parent1[:crossover_point] + parent2[crossover_point:]
             child2 = parent2[:crossover_point] + parent1[crossover_point:]
             new_candidates.extend([child1, child2])
-        
+
         mutated_candidates = []
         for candidate in new_candidates:
             mutated_candidate = list(candidate)
@@ -84,7 +69,7 @@ def evolutionary_strategy(prototypes, generations=10, population_size=50):
                 if np.random.rand() < mutation_chance:
                     mutated_candidate[i] = chr(np.random.randint(32, 127))
             mutated_candidates.append(''.join(mutated_candidate))
-        
+
         population = selected_candidates + mutated_candidates
 
     # Return the best candidate based on fitness
@@ -169,22 +154,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
-
-### Key Improvements:
-
-1. **Parallel Fitness Evaluation**:
-   - The `fitness_with_lyapunov` function is executed in parallel for each candidate prototype using `multiprocessing.Pool`. This allows for the simultaneous evaluation of multiple candidates, speeding up the evolutionary strategy.
-
-2. **Parallel Feature Extraction**:
-   - The `algebraic_geometry_features` function is also parallelized. Each function prototype's Gröbner basis computation is done in parallel, which is computationally expensive but now runs concurrently across multiple cores.
-
-3. **NUMA Considerations**:
-   - Although Python's standard `multiprocessing` library does not directly expose NUMA-specific controls, using `multiprocessing.Pool` ensures that processes are distributed across available CPU cores. On NUMA systems, the OS typically handles memory affinity and core affinity, making sure processes are executed closer to the memory they access frequently, thereby reducing latency.
-
-### Output:
-- The script identifies the best function prototype using an evolutionary strategy enhanced by Lyapunov stability criteria.
-- The best prototype is vectorized, and its features are extracted using polynomial kernels and algebraic geometry methods.
-- The script leverages parallel processing to accelerate both the fitness evaluation and feature extraction phases, making it more efficient on NUMA systems.
-
-This implementation significantly improves the performance of the original script, particularly in environments with multiple CPU cores and a NUMA architecture. Let me know if you need further refinements!

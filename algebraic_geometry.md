@@ -29,6 +29,10 @@ def polynomial_kernel_transform(vectors, degree=2):
     return poly.fit_transform(vectors)
 
 def reduce_dimensionality(vectors, n_components=2):
+    # Ensure n_components is not greater than the number of features or samples
+    n_components = min(n_components, vectors.shape[0], vectors.shape[1])
+    if n_components < 1:
+        return vectors
     pca = PCA(n_components=n_components)
     return pca.fit_transform(vectors)
 

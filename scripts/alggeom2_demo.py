@@ -16,17 +16,17 @@ def extract_function_prototypes(code):
 def evolutionary_strategy(prototypes, fitness_func, generations=10, population_size=50):
     population = prototypes * (population_size // len(prototypes) + 1)
     population = population[:population_size]
-    
+
     results = []
     for _ in range(generations):
         # Calculate fitness for each candidate.
         fitness_scores = np.array([fitness_func(candidate) for candidate in population])
-        
+
         # Selection: Choose top 50% based on fitness scores.
         # Here we assume lower score is better (stability).
         sorted_indices = np.argsort(fitness_scores)
         selected_candidates = [population[i] for i in sorted_indices[:population_size//2]]
-        
+
         # Crossover: Combine pairs to create new candidates.
         new_candidates = []
         for i in range(len(selected_candidates)//2):
@@ -37,7 +37,7 @@ def evolutionary_strategy(prototypes, fitness_func, generations=10, population_s
             child1 = parent1[:crossover_point] + parent2[crossover_point:]
             child2 = parent2[:crossover_point] + parent1[crossover_point:]
             new_candidates.extend([child1, child2])
-        
+
         # Mutation: Randomly alter some characters.
         mutated_candidates = []
         for candidate in new_candidates:
@@ -47,7 +47,7 @@ def evolutionary_strategy(prototypes, fitness_func, generations=10, population_s
                 if np.random.rand() < mutation_chance:
                     mutated_candidate[i] = chr(np.random.randint(32, 127))  # Random ASCII character.
             mutated_candidates.append(''.join(mutated_candidate))
-        
+
         # Create new population.
         population = selected_candidates + mutated_candidates
         results = list(zip(population, fitness_scores)) # Update results
@@ -64,7 +64,7 @@ def lyapunov_stability(candidate):
     Q = Matrix([[2, 0, 0], [0, 2, 0], [0, 0, 2]])
     V_expr = Matrix(x).T * Q * Matrix(x)
     V_val = V_expr[0,0].subs({x[0]: 1, x[1]: 1, x[2]: 1})
-    
+
     if re.match(r'\b[\w\*\&]+\s+[\w\*\&]+\s*\(.*\)\s*;', candidate):
         score = float(V_val) / (len(candidate) + 1)
         if 'return' in candidate: score -= 10
@@ -130,7 +130,8 @@ def main():
         transformed_vector = polynomial_features.fit_transform(prototype_vector)
 
         # PCA needs n_samples > n_components
-        # Here we use all prototypes to have enough samples for PCA
+        # Here we only have 1 sample if we only use best_prototype.
+        # Let's use all prototypes to have enough samples for PCA
         all_prototype_vectors = vectorizer.transform(function_prototypes + [best_prototype]).toarray()
         all_transformed = polynomial_features.fit_transform(all_prototype_vectors)
 
@@ -151,4 +152,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```

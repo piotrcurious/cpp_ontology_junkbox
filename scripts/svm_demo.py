@@ -1,10 +1,4 @@
-Reducing dimensionality, like using PCA (Principal Component Analysis), is often done to make models simpler and faster to train, especially when working with high-dimensional data. However, in some cases, keeping the dimensionality intact or even expanding it can be beneficial, particularly if the additional dimensions provide valuable information that improves the model's ability to capture complex relationships.
 
-In this improved approach, we'll leverage the additional dimensions by directly using the higher-dimensional polynomial features in our SVM model, instead of reducing dimensionality. We'll also introduce a way to correlate the extra dimensions with the SVM's decision function, enhancing the model's interpretability and performance.
-
-### Enhanced Python Code with Dimensionality Retained:
-
-```python
 import re
 import numpy as np
 import warnings
@@ -33,10 +27,10 @@ svm_classifier_global = None
 def svm_fitness(candidate):
     candidate_vector = vectorizer.transform([candidate]).toarray()
     high_dim_vector = polynomial_features.transform(candidate_vector)
-    
+
     # Use the pipeline to transform and then predict decision function
     decision_scores = svm_classifier_global.decision_function(high_dim_vector)
-    
+
     # Fitness is based on the magnitude of the decision score
     return np.max(decision_scores)
 
@@ -67,7 +61,7 @@ def evolutionary_strategy_svm(prototypes, generations=10, population_size=50):
             child1 = parent1[:crossover_point] + parent2[crossover_point:]
             child2 = parent2[:crossover_point] + parent1[crossover_point:]
             new_candidates.extend([child1, child2])
-        
+
         mutated_candidates = []
         for candidate in new_candidates:
             mutated_candidate = list(candidate)
@@ -76,7 +70,7 @@ def evolutionary_strategy_svm(prototypes, generations=10, population_size=50):
                 if np.random.rand() < mutation_chance:
                     mutated_candidate[i] = chr(np.random.randint(32, 127))
             mutated_candidates.append(''.join(mutated_candidate))
-        
+
         population = selected_candidates + mutated_candidates
 
     # Return the best candidate based on fitness
@@ -133,6 +127,9 @@ def main():
 
     print("\nTop correlated dimensions with SVM decision function:")
     unique_labels = svm_classifier_global.classes_
+    # The decision function for multi-class linear SVM might have different shape depending on ovo/ovr
+    # sklearn SVC uses OVO by default, but decision_function can be ovr.
+    # For SVC, n_classes > 2, it's (n_samples, n_classes) if decision_function_shape='ovr'
 
     n_output_cols = correlations.shape[1]
     for i in range(min(len(unique_labels), n_output_cols)):
@@ -165,26 +162,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
-
-### Key Enhancements:
-
-1. **Dimensionality Retention**:
-   - Instead of reducing the dimensionality using PCA, we retain and even expand the dimensions using `PolynomialFeatures` with a degree of 3. This expansion allows the model to capture more complex interactions among the features, which can be crucial in SVM models.
-
-2. **Correlation with SVM Decision Function**:
-   - We calculate the correlation between each dimension in the high-dimensional space and the SVM decision function's output. This correlation helps identify which dimensions are most influential in the model's decision-making process.
-
-3. **SVM Fitness Function**:
-   - The fitness function is enhanced to consider the SVM decision scores directly. The higher the decision score, the better the fitness of the candidate function prototype, which guides the evolutionary strategy.
-
-4. **Evolutionary Strategy**:
-   - The evolutionary strategy uses the SVM model with high-dimensional data directly. The strategy evaluates and evolves candidate prototypes, guided by the fitness scores derived from the SVM's decision function.
-
-### Output:
-
-- **Classification Report**: The SVM classifier's performance is evaluated using a classification report.
-- **Correlated Dimensions**: The dimensions in the high-dimensional space that are most correlated with the SVM decision function are identified and printed.
-- **Best Function Prototype**: The evolutionary strategy outputs the best function prototype based on the SVM's evaluation.
-
-This improved code structure leverages the full dimensionality of the features, enabling the SVM model to utilize more information and potentially achieve better performance. The correlation with the SVM decision function also adds interpretability, allowing us to understand which features are driving the model's decisions.

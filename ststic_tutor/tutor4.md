@@ -148,8 +148,8 @@ constexpr struct UARTConfig {
 Lookup tables are common in embedded systems for applications like signal processing or data compression. These tables are typically read-only and should be stored in Flash.
 
 ```cpp
-const uint8_t sinLookupTable[256] __attribute__((section(".rodata"))) = {
-    // Precomputed sine values...
+const uint8_t sinLookupTable[16] __attribute__((section(".rodata"))) = {
+    0, 49, 97, 142, 181, 212, 236, 250, 255, 250, 236, 212, 181, 142, 97, 49
 };
 ```
 
