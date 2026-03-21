@@ -33,29 +33,34 @@ def fitness_with_lyapunov(candidate):
     # Simple Lyapunov function check
     x = symbols('x:3')
     Q = Matrix([[2, 0, 0], [0, 2, 0], [0, 0, 2]])
-    V = Matrix(x).T * Q * Matrix(x)
+    V_expr = Matrix(x).T * Q * Matrix(x)
+
+    # Evaluate the Lyapunov function at a fixed point (e.g., all ones)
+    V_val = V_expr[0,0].subs({x[0]: 1, x[1]: 1, x[2]: 1})
     
     if 'return' in candidate and any(kw in candidate for kw in ['int', 'double', 'float']):
-        stability_score = -np.linalg.norm(np.array(V).astype(np.float64))
+        # Use the value of the Lyapunov function to influence the stability score
+        stability_score = -float(V_val) / (len(candidate) + 1)
     else:
         stability_score = np.inf
     
     return stability_score
 
-# 3. Parallel Evolutionary Strategy
+# 3. Worker for parallel evolutionary strategy (defined at top-level for pickling)
+def evolutionary_worker(prototype):
+    score = fitness_with_lyapunov(prototype)
+    return prototype, score
+
+# 4. Parallel Evolutionary Strategy
 def evolutionary_strategy(prototypes, generations=10, population_size=50):
-    def worker(prototype):
-        # Fitness evaluation in parallel
-        score = fitness_with_lyapunov(prototype)
-        return prototype, score
-    
-    population = prototypes * (population_size // len(prototypes))  # Initial population
+    population = prototypes * (population_size // len(prototypes) + 1)
+    population = population[:population_size]
 
     for _ in range(generations):
         with Pool(processes=cpu_count()) as pool:
-            results = pool.map(worker, population)
+            results = pool.map(evolutionary_worker, population)
 
-        # Select top 50% based on fitness
+        # Select top 50% based on fitness (lower is better in this stability-based score)
         sorted_results = sorted(results, key=lambda x: x[1])
         selected_candidates = [result[0] for result in sorted_results[:population_size // 2]]
 
@@ -84,62 +89,73 @@ def evolutionary_strategy(prototypes, generations=10, population_size=50):
     best_prototype, _ = sorted(results, key=lambda x: x[1])[0]
     return best_prototype
 
-# 4. Parallel Algebraic Geometry Feature Extraction
-def algebraic_geometry_features(prototypes):
-    def compute_groebner(prototype):
-        tokens = re.findall(r'\w+', prototype)
-        variables = symbols(tokens)
-        equations = [var**2 + 1 for var in variables]
-        G = groebner(equations)
+# 5. Worker for parallel feature extraction (defined at top-level for pickling)
+def compute_groebner_worker(prototype):
+    tokens = re.findall(r'[a-zA-Z_]\w*', prototype)[:5] # Limit variables
+    if not tokens: return np.array([0.0], dtype=np.float64)
+    variables = symbols(tokens)
+    equations = [var**2 + 1 for var in variables]
+    try:
+        G = groebner(equations, variables)
         return np.array([len(str(g)) for g in G], dtype=np.float64)
+    except:
+        return np.array([0.0], dtype=np.float64)
 
+# 6. Parallel Algebraic Geometry Feature Extraction
+def algebraic_geometry_features(prototypes):
     with Pool(processes=cpu_count()) as pool:
-        features = pool.map(compute_groebner, prototypes)
+        features = pool.map(compute_groebner_worker, prototypes)
 
     return features
 
-# 5. Text2Vec for Vectorization and Similarity Calculation
-vectorizer = TfidfVectorizer()
+# Main execution logic
+def main():
+    # Text2Vec for Vectorization and Similarity Calculation
+    vectorizer = TfidfVectorizer()
 
-# Example C++ code snippets.
-cpp_code_snippets = [
-    "int add(int a, int b);",
-    "void print(const std::string& message);",
-    "double power(double base, int exponent);",
-    "int main() { int x = 10; return x; }",
-    "class MyClass { public: void myFunction(); };"
-]
+    # Example C++ code snippets.
+    cpp_code_snippets = [
+        "int add(int a, int b);",
+        "void print(const std::string& message);",
+        "double power(double base, int exponent);",
+        "int main() { int x = 10; return x; }",
+        "class MyClass { public: void myFunction(); };"
+    ]
 
-# Extracting function prototypes from the code snippets.
-function_prototypes = []
-for code in cpp_code_snippets:
-    prototypes = extract_function_prototypes(code)
-    function_prototypes.extend(prototypes)
+    # Extracting function prototypes from the code snippets.
+    function_prototypes = []
+    for code in cpp_code_snippets:
+        prototypes = extract_function_prototypes(code)
+        function_prototypes.extend(prototypes)
 
-# Apply parallel evolutionary strategy to generate the best function prototype.
-if not function_prototypes:
-    print("No function prototypes found in the provided code snippets.")
-else:
-    best_prototype = evolutionary_strategy(function_prototypes)
+    # Apply parallel evolutionary strategy to generate the best function prototype.
+    if not function_prototypes:
+        print("No function prototypes found in the provided code snippets.")
+    else:
+        best_prototype = evolutionary_strategy(function_prototypes)
 
-    # Vectorize the best prototype.
-    prototype_vector = vectorizer.fit_transform([best_prototype]).toarray()
+        # Vectorize the best prototype (include original prototypes to ensure vectorizer has enough data)
+        vectorizer.fit(function_prototypes + [best_prototype])
+        prototype_vector = vectorizer.transform([best_prototype]).toarray()
 
-    # Apply polynomial kernel and reduce dimensionality.
-    polynomial_features = PolynomialFeatures(degree=2)
-    transformed_vector = polynomial_features.fit_transform(prototype_vector)
-    pca = PCA(n_components=2)
-    reduced_vector = pca.fit_transform(transformed_vector)
+        # Apply polynomial kernel and reduce dimensionality.
+        polynomial_features = PolynomialFeatures(degree=2)
+        transformed_vector = polynomial_features.fit_transform(prototype_vector)
+        pca = PCA(n_components=min(2, transformed_vector.shape[1]))
+        reduced_vector = pca.fit_transform(transformed_vector)
 
-    # Extract algebraic geometry features in parallel.
-    algebraic_features = algebraic_geometry_features([best_prototype])
+        # Extract algebraic geometry features in parallel.
+        algebraic_features = algebraic_geometry_features([best_prototype])
 
-    # Combine reduced vector with algebraic features.
-    final_vector = np.hstack((reduced_vector.flatten(), algebraic_features))
+        # Combine reduced vector with algebraic features.
+        final_vector = np.hstack((reduced_vector.flatten(), algebraic_features[0]))
 
-    # Display the best function prototype and its feature vector.
-    print(f"Best Function Prototype: '{best_prototype}'")
-    print(f"Feature Vector: {final_vector}")
+        # Display the best function prototype and its feature vector.
+        print(f"Best Function Prototype: '{best_prototype}'")
+        print(f"Feature Vector: {final_vector}")
+
+if __name__ == "__main__":
+    main()
 ```
 
 ### Key Improvements:

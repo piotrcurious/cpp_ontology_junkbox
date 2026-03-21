@@ -41,12 +41,21 @@ We'll extend the SVM class to use LFSR sequences for generating candidates durin
 
 ```python
 import numpy as np
+import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import PolynomialFeatures, StandardScaler
 from sklearn.svm import SVC
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 from sklearn.pipeline import make_pipeline
+from multiprocessing import Pool, cpu_count
+
+# Global instance for worker to access (simplification for example)
+svm_with_lfsr_instance = None
+
+def lfsr_worker(prototype):
+    score = svm_with_lfsr_instance.svm_fitness(prototype)
+    return prototype, score
 
 class SVMWithLFSR:
     def __init__(self, svm_model, vectorizer, poly_features, lfsr):
@@ -82,15 +91,15 @@ class SVMWithLFSR:
         return ''.join(child1), ''.join(child2)
     
     def evolutionary_strategy(self, prototypes, generations=10, population_size=50):
-        def worker(prototype):
-            score = self.svm_fitness(prototype)
-            return prototype, score
+        global svm_with_lfsr_instance
+        svm_with_lfsr_instance = self
         
-        population = prototypes * (population_size // len(prototypes))  # Initial population
+        population = prototypes * (population_size // len(prototypes) + 1)
+        population = population[:population_size]
 
         for _ in range(generations):
             with Pool(processes=cpu_count()) as pool:
-                results = pool.map(worker, population)
+                results = pool.map(lfsr_worker, population)
 
             # Select top 50% based on fitness
             sorted_results = sorted(results, key=lambda x: x[1], reverse=True)
@@ -109,6 +118,10 @@ class SVMWithLFSR:
         # Return the best candidate based on fitness
         best_prototype, _ = sorted(results, key=lambda x: x[1], reverse=True)[0]
         return best_prototype
+
+def extract_function_prototypes(code):
+    pattern = r'\b[\w\*\&]+\s+[\w\*\&]+\s*\([^)]*\)\s*;'
+    return re.findall(pattern, code)
 ```
 
 #### 3. Training and Running the Evolutionary Strategy
@@ -117,7 +130,7 @@ We'll train the SVM model and use the `SVMWithLFSR` class to manage the evolutio
 
 ```python
 # Example labeled dataset
-cpp_code_snippets = [
+cpp_code_snippets_dataset = [
     ("int add(int a, int b);", "math"),
     ("void print(const std::string& message);", "io"),
     ("double power(double base, int exponent);", "math"),
@@ -129,8 +142,8 @@ cpp_code_snippets = [
 ]
 
 # 1. Extract function prototypes and their labels.
-function_prototypes = [snippet[0] for snippet in cpp_code_snippets]
-labels = [snippet[1] for snippet in cpp_code_snippets]
+function_prototypes = [snippet[0] for snippet in cpp_code_snippets_dataset]
+labels = [snippet[1] for snippet in cpp_code_snippets_dataset]
 
 # 2. Vectorize the function prototypes.
 vectorizer = TfidfVectorizer()

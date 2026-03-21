@@ -13,56 +13,18 @@ from sklearn.svm import SVC
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 from sklearn.pipeline import make_pipeline
+from multiprocessing import Pool, cpu_count
 
-# Example labeled dataset
-cpp_code_snippets = [
-    ("int add(int a, int b);", "math"),
-    ("void print(const std::string& message);", "io"),
-    ("double power(double base, int exponent);", "math"),
-    ("int main() { int x = 10; return x; }", "main"),
-    ("class MyClass { public: void myFunction(); };", "class_method"),
-    ("void logError(const std::string& error);", "io"),
-    ("double sqrt(double x);", "math"),
-    ("void init();", "init"),
-]
+# 0. Function to extract C++ function prototypes using regular expressions.
+def extract_function_prototypes(code):
+    pattern = r'\b[\w\*\&]+\s+[\w\*\&]+\s*\([^)]*\)\s*;'
+    return re.findall(pattern, code)
 
-# 1. Extract function prototypes and their labels.
-function_prototypes = [snippet[0] for snippet in cpp_code_snippets]
-labels = [snippet[1] for snippet in cpp_code_snippets]
-
-# 2. Vectorize the function prototypes.
+# 1. Global vectorizer and SVM objects for parallel workers to access (for demonstration).
+# In a larger application, these would be passed or properly encapsulated.
 vectorizer = TfidfVectorizer()
-prototype_vectors = vectorizer.fit_transform(function_prototypes).toarray()
-
-# 3. Apply polynomial kernel to enhance dimensionality.
 polynomial_features = PolynomialFeatures(degree=3, interaction_only=False)
-high_dim_vectors = polynomial_features.fit_transform(prototype_vectors)
-
-# 4. Train/Test split
-X_train, X_test, y_train, y_test = train_test_split(high_dim_vectors, labels, test_size=0.3, random_state=42)
-
-# 5. Train SVM model
-svm_classifier = make_pipeline(StandardScaler(), SVC(kernel='linear', probability=True))
-svm_classifier.fit(X_train, y_train)
-
-# 6. Evaluate the model
-y_pred = svm_classifier.predict(X_test)
-print("Classification Report:")
-print(classification_report(y_test, y_pred))
-
-# 7. Correlate extra dimensions with the SVM decision function
-def correlate_dimensions_with_svm(model, X, labels):
-    decision_function = model.decision_function(X)
-    correlations = np.corrcoef(X.T, decision_function.T)[:X.shape[1], X.shape[1]:]
-    most_correlated_dims = np.argsort(-np.abs(correlations), axis=0)[:3, :]  # Top 3 dimensions per class
-    return most_correlated_dims, correlations
-
-# Correlate training data dimensions with SVM decision function
-correlated_dims, correlations = correlate_dimensions_with_svm(svm_classifier.named_steps['svc'], X_train, y_train)
-
-print("\nTop correlated dimensions with SVM decision function:")
-for i, label in enumerate(np.unique(labels)):
-    print(f"Class '{label}': Dimensions {correlated_dims[:, i].flatten()} with correlations {correlations[correlated_dims[:, i], i].flatten()}")
+svm_classifier = None
 
 # 8. SVM Fitness Function using Correlated Dimensions
 def svm_fitness(candidate):
@@ -74,18 +36,19 @@ def svm_fitness(candidate):
     # Fitness is based on the magnitude of the decision score
     return np.max(decision_scores)
 
-# 9. Evolutionary Strategy leveraging SVM with Correlation
+# 9. Evolutionary Strategy Worker (defined at top-level for pickling)
+def evolutionary_worker(prototype):
+    score = svm_fitness(prototype)
+    return prototype, score
+
+# 10. Evolutionary Strategy leveraging SVM with Correlation
 def evolutionary_strategy_svm(prototypes, generations=10, population_size=50):
-    def worker(prototype):
-        # Fitness evaluation in parallel using SVM and correlation with decision function
-        score = svm_fitness(prototype)
-        return prototype, score
-    
-    population = prototypes * (population_size // len(prototypes))  # Initial population
+    population = prototypes * (population_size // len(prototypes) + 1)
+    population = population[:population_size]
 
     for _ in range(generations):
         with Pool(processes=cpu_count()) as pool:
-            results = pool.map(worker, population)
+            results = pool.map(evolutionary_worker, population)
 
         # Select top 50% based on fitness
         sorted_results = sorted(results, key=lambda x: x[1], reverse=True)
@@ -116,8 +79,57 @@ def evolutionary_strategy_svm(prototypes, generations=10, population_size=50):
     best_prototype, _ = sorted(results, key=lambda x: x[1], reverse=True)[0]
     return best_prototype
 
-# Example C++ code snippets.
+# 7. Correlate extra dimensions with the SVM decision function
+def correlate_dimensions_with_svm(model, X, labels):
+    decision_function = model.decision_function(X)
+    correlations = np.corrcoef(X.T, decision_function.T)[:X.shape[1], X.shape[1]:]
+    most_correlated_dims = np.argsort(-np.abs(correlations), axis=0)[:3, :]  # Top 3 dimensions per class
+    return most_correlated_dims, correlations
+
+# Example labeled dataset
 cpp_code_snippets = [
+    ("int add(int a, int b);", "math"),
+    ("void print(const std::string& message);", "io"),
+    ("double power(double base, int exponent);", "math"),
+    ("int main() { int x = 10; return x; }", "main"),
+    ("class MyClass { public: void myFunction(); };", "class_method"),
+    ("void logError(const std::string& error);", "io"),
+    ("double sqrt(double x);", "math"),
+    ("void init();", "init"),
+]
+
+# Extract function prototypes and their labels.
+function_prototypes = [snippet[0] for snippet in cpp_code_snippets]
+labels = [snippet[1] for snippet in cpp_code_snippets]
+
+# Vectorize the function prototypes.
+prototype_vectors = vectorizer.fit_transform(function_prototypes).toarray()
+
+# Apply polynomial kernel to enhance dimensionality.
+high_dim_vectors = polynomial_features.fit_transform(prototype_vectors)
+
+# Train/Test split
+X_train, X_test, y_train, y_test = train_test_split(high_dim_vectors, labels, test_size=0.3, random_state=42)
+
+# Train SVM model
+svm_classifier = make_pipeline(StandardScaler(), SVC(kernel='linear', probability=True))
+svm_classifier.fit(X_train, y_train)
+
+# Evaluate the model
+y_pred = svm_classifier.predict(X_test)
+print("Classification Report:")
+print(classification_report(y_test, y_pred))
+
+# Correlate training data dimensions with SVM decision function
+correlated_dims, correlations = correlate_dimensions_with_svm(svm_classifier.named_steps['svc'], X_train, y_train)
+
+print("\nTop correlated dimensions with SVM decision function:")
+unique_labels = np.unique(labels)
+for i, label in enumerate(unique_labels):
+    print(f"Class '{label}': Dimensions {correlated_dims[:, i].flatten()} with correlations {correlations[correlated_dims[:, i], i].flatten()}")
+
+# Example C++ code snippets for evolution.
+cpp_code_snippets_raw = [
     "int add(int a, int b);",
     "void print(const std::string& message);",
     "double power(double base, int exponent);",
@@ -126,16 +138,16 @@ cpp_code_snippets = [
 ]
 
 # Extracting function prototypes from the code snippets.
-function_prototypes = []
-for code in cpp_code_snippets:
+function_prototypes_evolve = []
+for code in cpp_code_snippets_raw:
     prototypes = extract_function_prototypes(code)
-    function_prototypes.extend(prototypes)
+    function_prototypes_evolve.extend(prototypes)
 
 # Apply the parallel evolutionary strategy with SVM fitness function.
-if not function_prototypes:
+if not function_prototypes_evolve:
     print("No function prototypes found in the provided code snippets.")
 else:
-    best_prototype = evolutionary_strategy_svm(function_prototypes)
+    best_prototype = evolutionary_strategy_svm(function_prototypes_evolve)
 
     print(f"Best Function Prototype based on SVM: '{best_prototype}'")
 ```
